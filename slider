@@ -1,0 +1,163 @@
+#!/bin/sh
+
+main() {
+  statefile=/tmp/slider.state
+
+  if [ $# = 1 ]; then
+    case "$1" in
+      refresh)
+        grep "(sw[0-9] " /sys/kernel/debug/gpio > /tmp/slider.state; return $? ;;
+      state)
+        getstate; echo "$state"; return $? ;;
+      ensure-openvpn)
+        ensure_openvpn; return $? ;;
+      ensure_openvpn)
+        ensure_openvpn; return $? ;;
+      daemon)
+        true ;;
+      *)
+        showjunk "$@" ;;
+    esac
+  else
+    showjunk "$@"
+  fi
+
+  getstate
+  info 'Started.'
+  info "Current state: $state."
+
+  oldcontent="`cat $statefile`"
+
+  while :; do
+    sleep 1
+    content="`cat $statefile`"
+    [ "$oldcontent" = "$content" ] && continue
+
+    while :; do
+      oldcontent="$content"
+      sleep 1
+      content="`cat $statefile`"
+      [ "$oldcontent" != "$content" ] && continue;
+
+      getstate to_router to_3g to_ap
+      info 'Done.'
+      break
+    done
+  done
+}
+
+showjunk() {
+  echo "Usage: $0 daemon|state|refresh|ensure-openvpn"
+  exit 1
+}
+
+info() {
+  logger -s -t slider -p daemon.info "$@"
+}
+
+getstate() {
+  state="`awk '
+  $2 == "(sw1" { sw1 = $5; }
+  $2 == "(sw2" { sw2 = $5; }
+  END { print sw1 sw2; }
+  ' $statefile`"
+
+  case "$state" in
+    lohi)
+      state=Router; eval "$1";;
+    hilo)
+      state=3G;     eval "$2";;
+    hihi)
+      state=AP;     eval "$3";;
+    *)
+      state=Invalid; false;;
+  esac
+}
+
+ensure_openvpn() {
+  getstate ensure_openvpn_stop ensure_openvpn_stop ensure_openvpn_running
+  info 'Done.'
+}
+ensure_openvpn_stop() {
+  info 'To ensure openvpn stopped...'
+  local try
+  try=0
+
+  while [ $((try++)) -lt 5 ]; do
+    killall -0 openvpn || return 0
+    sleep 1
+  done
+
+  info 'Stopping openvpn...'
+  /etc/init.d/openvpn stop
+  check_wan_route
+}
+ensure_openvpn_running() {
+  info 'To ensure openvpn running...'
+  local try
+  try=0
+
+  while [ $((try++)) -lt 5 ]; do
+    killall -0 openvpn && return 0
+    sleep 1
+  done
+
+  if check_wan_route; then
+    info 'Starting openvpn...'
+    /etc/init.d/openvpn start
+  else
+    info 'Cannot start openvpn.'
+  fi
+}
+
+to_router() {
+  info 'Entering Router mode...'
+  info 'Setting up AntiGFW-outside-PKU configuration...'
+  ln -sf /etc/dnsmasq-frontend-gfw.conf /tmp/etc/dnsmasq-frontend.d/gfw.conf
+  reset_services
+  # TODO squid
+}
+to_3g() {
+  info 'Entering 3G mode...'
+  info 'Removing any AntiGFW configuration...'
+  rm -f /tmp/etc/dnsmasq-frontend.d/gfw.conf
+  reset_services
+}
+to_ap() {
+  info 'Entering AP mode...'
+  info 'Setting up AntiGFW-in-PKU configuration...'
+  ln -sf /etc/dnsmasq-frontend-gfw.conf /tmp/etc/dnsmasq-frontend.d/gfw.conf
+  reset_services
+  /etc/init.d/openvpn start
+}
+
+reset_services() {
+  /etc/init.d/dnsmasq-frontend restart
+  /etc/init.d/openvpn stop
+  check_wan_route
+}
+
+check_wan_route() {
+  local try
+  try=0
+
+  while [ $((try++)) -lt 5 ]; do
+    route -n | grep '^0' && return 0
+    sleep 1
+  done
+
+  info 'No default route. Fixing by restart WAN interface...'
+  ubus call network.interface.wan down
+  ubus call network.interface.wan up
+  try=0
+
+  while [ $((try++)) -lt 15 ]; do
+    route -n | grep '^0' && return 0
+    sleep 1
+  done
+
+  info 'Still no default route.'
+  return 1
+}
+
+main "$@"
