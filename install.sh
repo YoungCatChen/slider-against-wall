@@ -46,10 +46,10 @@ execcmd pwd
 
 # Copy files.
 
-execcmd install -m 755 -d /etc
-execcmd install -m 755 -d /etc/init.d
-execcmd install -m 755 slider /etc/slider
-execcmd install -m 755 slider.initd /etc/init.d/slider
+execcmd mkdir -pm 755 /etc/init.d
+execcmd cp -fP slider /etc/
+execcmd cp -fP slider.initd /etc/init.d/slider
+execcmd chmod 755 /etc/slider /etc/init.d/slider
 
 
 # And we are done.
