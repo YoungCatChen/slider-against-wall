@@ -1,5 +1,12 @@
 #!/bin/sh
 
+installs='
+755 slider          /etc/slider
+755 slider.initd    /etc/init.d/slider
+644 iface.hotplugd  /etc/hotplug.d/iface/88-slider
+644 button.hotplugd /etc/hotplug.d/button/21-slider
+'
+
 execcmd()
 {
   execcmd_before "$@"
@@ -47,9 +54,17 @@ execcmd pwd
 # Copy files.
 
 execcmd mkdir -pm 755 /etc/init.d
-execcmd cp -fP slider /etc/
-execcmd cp -fP slider.initd /etc/init.d/slider
-execcmd chmod 755 /etc/slider /etc/init.d/slider
+
+echo "$installs" | while read mod from to check; do
+  if [ -n "$from" ]; then
+    if [ "$check" = check ]; then
+      [ -f "$to" ] && continue
+    fi
+
+    execcmd cp -fP "$from" "$to"
+    execcmd chmod "$mod" "$to"
+  fi
+done
 
 
 # And we are done.

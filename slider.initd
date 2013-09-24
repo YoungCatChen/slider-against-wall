@@ -6,7 +6,7 @@ SERVICE_DAEMONIZE=1
 SERVICE_WRITE_PID=1
 
 start() {
-  stop
+  service_check /bin/sh && return 1
   service_start /etc/slider daemon
 }
 

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+[ "$ACTION" = "ifup" ] && {
+  /etc/slider ensure-openvpn &
+  /etc/slider ensure-wallssh &
+}
+
+[ "$ACTION" = "ifdown" ] && {
+  logger -p info 'Stopping openvpn due to ifdown...'
+  /etc/init.d/openvpn stop
+  logger -p info 'Stopping wallssh due to ifdown...'
+  /etc/init.d/wallssh stop
+}
